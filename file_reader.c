@@ -1,7 +1,5 @@
 #include "file_reader.h"
 
-
-
 struct disk_t* disk_open_from_file(const char* volume_file_name)
 {
 	if ( volume_file_name == NULL )
@@ -19,7 +17,6 @@ struct disk_t* disk_open_from_file(const char* volume_file_name)
 		free( disk );
 		return NULL;
 	}
-	fread( &disk->super, sizeof( disk->super ), 1, disk->fptr );
 	return disk;
 }
 

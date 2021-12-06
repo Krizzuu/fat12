@@ -38,7 +38,6 @@ struct __attribute__((packed)) super_t {
 
 struct disk_t{
 	FILE* fptr;
-	struct super_t super;
 };
 struct volume_t{
 	struct super_t* super;
