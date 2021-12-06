@@ -1,39 +1,34 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <errno.h>
 
 #ifndef FILE_READER_H
 #define FILE_READER_H
 
-int bits_per_fat_entry = (235983 % 2 == 1) ? 12 : 16;
 
-struct __attribute__((packed)) boot_t {
-	uint8_t  boot_code[3];
-	uint8_t  OEM[8];
-	uint16_t sector_size;
-	uint8_t  cluster_size;
-	uint16_t rev_size;
-	uint8_t  nFATs;
-	uint16_t max_files_root_dir;
-	uint16_t nSectors_FS1;
-	uint8_t  mediaType;
-	uint16_t sizeofFAT; // in sectors
-	uint16_t sectorsPerTrack;
-	uint16_t nHeads;
-	uint32_t nHeads_bef_start_partition;
-	uint32_t nSectors_FS2;
-};
-
-struct __attribute__((packed)) super_t {
-	struct boot_t basicBSector;
-	uint8_t biosIntDriveNum;
-	uint8_t notUsed1;
-	uint8_t extBootSign;
-	uint32_t volSerialNum;
-	uint8_t volLabel[11];
-	uint8_t FSLabel[8];
-	uint8_t notUsed2[448];
-	uint16_t signVal;
+struct super_t {
+	uint8_t jump_code[3];
+	char oem_name[8];
+	uint16_t bytes_pes_sector;
+	uint8_t sectors_per_cluster;
+	uint16_t reserved_sectors;
+	uint8_t fat_count;
+	uint16_t root_dir_capacity;
+	uint16_t logical_sectors16;
+	uint8_t media_type;
+	uint16_t chs_sectors_per_track;
+	uint16_t chs_tracks_per_cylinder;
+	uint32_t hidden_sectors;
+	uint32_t logical_sectors32;
+	uint8_t media_id;
+	uint8_t chs_head;
+	uint8_t ext_bpb_signature;
+	uint32_t serial_number;
+	char volume_label[11];
+	char fsid[8];
+	uint8_t boot_code[448];
+	uint16_t magic;
 };
 
 struct disk_t{
@@ -54,10 +49,14 @@ struct volume_t{
 	uint32_t total_clusters;
 };
 struct file_t{
-
+	int a;
 };
 struct dir_t{
-
+	int a;
+};
+struct dir_entry_t{
+	int a;
+	const char* name;
 };
 
 struct disk_t* disk_open_from_file(const char* volume_file_name);
@@ -71,6 +70,7 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name);
 int file_close(struct file_t* stream);
 size_t file_read(void *ptr, size_t size, size_t nmemb, struct file_t *stream);
 int32_t file_seek(struct file_t* stream, int32_t offset, int whence);
+
 
 struct dir_t* dir_open(struct volume_t* pvolume, const char* dir_path);
 int dir_read(struct dir_t* pdir, struct dir_entry_t* pentry);
