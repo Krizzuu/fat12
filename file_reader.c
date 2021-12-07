@@ -25,10 +25,24 @@ struct disk_t* disk_open_from_file(const char* volume_file_name)
 
 int disk_read(struct disk_t* pdisk, int32_t first_sector, void* buffer, int32_t sectors_to_read)
 {
-	if ( pdisk || first_sector || buffer || sectors_to_read )
-	{}
+	if ( pdisk == NULL || buffer == NULL || sectors_to_read )
+	{
+		return -1;
+	}
+	int read = 0;
+	fseek( pdisk->fptr, 0, SEEK_SET );
+	char* temp = buffer;
+	for( ; read < sectors_to_read; read++ )
+	{
+//		unsigned long res;
+		fread( ( temp + ( read << 9 ) ) , 512, 1, pdisk->fptr );
+//		if ( res != 1 )
+//		{
+//			return read;
+//		}
+	}
 
-	return 2;
+	return read;
 }
 int disk_close(struct disk_t* pdisk)
 {
@@ -43,9 +57,30 @@ int disk_close(struct disk_t* pdisk)
 
 struct volume_t* fat_open(struct disk_t* pdisk, uint32_t first_sector)
 {
-	if( pdisk || first_sector )
-	{}
-	return NULL;
+	if( pdisk == NULL )
+	{
+		return NULL;
+	}
+	struct volume_t* vol = malloc( sizeof( *vol ) );
+	if( vol == NULL )
+	{
+		return NULL;
+	}
+	vol->super = malloc( sizeof( *vol->super ) );
+	if ( vol->super == NULL )
+	{
+		free( vol );
+		return NULL;
+	}
+	disk_read( pdisk, first_sector, vol->super, 1 );
+	if ( vol->super->reserved_sectors == 0
+		|| (vol->super->fat_count != 1 && vol->super->fat_count != 2) )
+	{
+		free( vol->super );
+		free( vol );
+		return NULL;
+	}
+	return vol;
 }
 int fat_close(struct volume_t* pvolume)
 {
