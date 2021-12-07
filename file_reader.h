@@ -89,6 +89,7 @@ int file_close(struct file_t* stream);
 size_t file_read(void *ptr, size_t size, size_t nmemb, struct file_t *stream);
 int32_t file_seek(struct file_t* stream, int32_t offset, int whence);
 
+void extract_name( char* src, char* dest, int is_dir );
 
 struct dir_t* dir_open(struct volume_t* pvolume, const char* dir_path);
 int dir_read(struct dir_t* pdir, struct dir_entry_t* pentry);

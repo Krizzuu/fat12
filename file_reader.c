@@ -132,6 +132,7 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 	char sector[512];
 	disk_read( pvolume->disk, pvolume->first_root_sector, sector, 1 );
 	struct root_dir_t root;
+//	int found = 0;
 	for( int i = 0; i < 16; i++ )
 	{
 		memcpy( &root, sector + ( i << 5 ), sizeof( root ) );
@@ -139,8 +140,11 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 		{
 			continue;
 		}
-		if ( ( char* )root.filename == file_name )
+		char name[13];
+		extract_name( ( char* )root.filename, name, root.attrib & 0x10 );
+		if ( strcmp( name, file_name ) == 0 )
 		{
+//			found = 1;
 			break;
 		}
 	}
@@ -168,6 +172,40 @@ int32_t file_seek(struct file_t* stream, int32_t offset, int whence)
 
 	return 0;
 }
+
+void extract_name( char* src, char* dest, int is_dir )
+{
+	int len = 11;
+	for ( int i = 0; i < 10; i++ )
+	{
+		if( *( src + i ) == ' ' )
+		{
+			len--;
+		}
+	}
+
+	*dest = *src;
+	int k = 1;
+	for ( int i = 0; k < len; i++ )
+	{
+		if ( *( src + i + 1) != ' ')
+		{
+			*( dest + k++ ) = *( src + i + 1 );
+		}
+	}
+	if ( !is_dir )
+	{
+		for (int i = 0; i < 3; i++)
+		{
+			*( dest + len - i ) = *( dest + len - i - 1 );
+		}
+		*( dest + len - 3 ) = '.';
+		*( dest + len + 1 ) = '\0';
+	}
+	else
+		*( dest + len ) = '\0';
+}
+
 
 struct dir_t* dir_open(struct volume_t* pvolume, const char* dir_path)
 {
