@@ -99,6 +99,8 @@ struct volume_t* fat_open(struct disk_t* pdisk, uint32_t first_sector)
 	}
 	vol->disk = pdisk;
 	vol->first_fat_sector = vol->super->reserved_sectors;
+	vol->first_root_sector = vol->first_fat_sector + vol->super->fat_count * vol->super->sectors_per_fat;
+	vol->first_data_sector = vol->first_root_sector + vol->super->root_dir_capacity;
 
 	disk_read( pdisk, vol->first_fat_sector, vol->fat, vol->super->sectors_per_fat );
 
@@ -106,18 +108,44 @@ struct volume_t* fat_open(struct disk_t* pdisk, uint32_t first_sector)
 }
 int fat_close(struct volume_t* pvolume)
 {
-	if ( pvolume )
-	{}
-
+	if ( pvolume == NULL )
+	{
+		return -1;
+	}
+	free( pvolume->super );
+	free( pvolume->fat );
+	free( pvolume );
 	return 0;
 }
 
 struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 {
-	if ( pvolume || file_name )
-	{}
+	if ( pvolume == NULL || file_name == NULL )
+	{
+		return NULL;
+	}
+	struct file_t* file = malloc( sizeof( *file ) );
+	if ( file == NULL )
+	{
+		return NULL;
+	}
+	char sector[512];
+	disk_read( pvolume->disk, pvolume->first_root_sector, sector, 1 );
+	struct root_dir_t root;
+	for( int i = 0; i < 16; i++ )
+	{
+		memcpy( &root, sector + ( i << 5 ), sizeof( root ) );
+		if ( *root.filename == 0xe5 )
+		{
+			continue;
+		}
+		if ( ( char* )root.filename == file_name )
+		{
+			break;
+		}
+	}
 
-	return NULL;
+	return file;
 }
 int file_close(struct file_t* stream)
 {

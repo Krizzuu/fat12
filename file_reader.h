@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <errno.h>
+#include <memory.h>
 
 #ifndef FILE_READER_H
 #define FILE_READER_H
@@ -42,15 +43,32 @@ struct volume_t{
 
 	uint16_t total_sectors;
 	int32_t fat_size;
-	uint16_t root_dir_sectors;
 	uint16_t first_data_sector;
 	uint16_t first_fat_sector;
+	uint16_t first_root_sector;
 	uint32_t data_sectors;
 	uint32_t total_clusters;
 };
 struct file_t{
-	int a;
+	uint16_t* chain;
+	uint16_t chain_size;
 };
+
+struct __attribute__((__packed__)) root_dir_t  {
+	uint8_t filename[11];
+	uint8_t attrib;
+	uint8_t reserved;
+	uint8_t file_creation_time;
+	uint16_t creation_time;
+	uint16_t creation_date;
+	uint16_t access_date;
+	uint16_t high_order;
+	uint16_t mod_time;
+	uint16_t mod_date;
+	uint16_t low_order;
+	uint32_t file_size;
+};
+
 struct dir_t{
 	int a;
 };
