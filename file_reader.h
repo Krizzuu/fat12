@@ -7,7 +7,7 @@
 #define FILE_READER_H
 
 
-struct super_t {
+struct __attribute__((packed)) super_t {
 	uint8_t jump_code[3];
 	char oem_name[8];
 	uint16_t bytes_pes_sector;
@@ -17,7 +17,7 @@ struct super_t {
 	uint16_t root_dir_capacity;
 	uint16_t logical_sectors16;
 	uint8_t media_type;
-	uint16_t chs_sectors_per_track;
+	uint16_t sectors_per_fat;
 	uint16_t chs_tracks_per_cylinder;
 	uint32_t hidden_sectors;
 	uint32_t logical_sectors32;
