@@ -49,9 +49,14 @@ struct volume_t{
 	uint32_t data_sectors;
 	uint32_t total_clusters;
 };
+
+struct clusters_chain_t{
+	uint32_t *clusters;
+	size_t size;
+};
+
 struct file_t{
-	uint16_t* chain;
-	uint16_t chain_size;
+	struct clusters_chain_t* chain;
 };
 
 struct __attribute__((__packed__)) root_dir_t  {
@@ -89,7 +94,8 @@ int file_close(struct file_t* stream);
 size_t file_read(void *ptr, size_t size, size_t nmemb, struct file_t *stream);
 int32_t file_seek(struct file_t* stream, int32_t offset, int whence);
 
-void extract_name( char* src, char* dest, int is_dir );
+void extract_name( const char* src, char* dest, int is_dir );
+struct clusters_chain_t* get_chain_fat12(const void * buffer, size_t size, uint32_t first_cluster);
 
 struct dir_t* dir_open(struct volume_t* pvolume, const char* dir_path);
 int dir_read(struct dir_t* pdir, struct dir_entry_t* pentry);

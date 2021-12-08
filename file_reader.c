@@ -101,6 +101,7 @@ struct volume_t* fat_open(struct disk_t* pdisk, uint32_t first_sector)
 	vol->first_fat_sector = vol->super->reserved_sectors;
 	vol->first_root_sector = vol->first_fat_sector + vol->super->fat_count * vol->super->sectors_per_fat;
 	vol->first_data_sector = vol->first_root_sector + vol->super->root_dir_capacity;
+	vol->fat_size = vol->super->sectors_per_fat * vol->super->bytes_pes_sector;
 
 	disk_read( pdisk, vol->first_fat_sector, vol->fat, vol->super->sectors_per_fat );
 
@@ -124,15 +125,11 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 	{
 		return NULL;
 	}
-	struct file_t* file = malloc( sizeof( *file ) );
-	if ( file == NULL )
-	{
-		return NULL;
-	}
+
 	char sector[512];
 	disk_read( pvolume->disk, pvolume->first_root_sector, sector, 1 );
 	struct root_dir_t root;
-//	int found = 0;
+	int found = 0;
 	for( int i = 0; i < 16; i++ )
 	{
 		memcpy( &root, sector + ( i << 5 ), sizeof( root ) );
@@ -144,13 +141,38 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 		extract_name( ( char* )root.filename, name, root.attrib & 0x10 );
 		if ( strcmp( name, file_name ) == 0 )
 		{
-//			found = 1;
+			found = 1;
 			break;
 		}
 	}
+	if ( found == 0 )
+	{
+		return NULL;
+	}
 
+	struct file_t* file = malloc( sizeof( *file ) );
+	if ( file == NULL )
+	{
+		return NULL;
+	}
+
+	file->chain = malloc( sizeof( uint32_t ) );
+	if ( file->chain == NULL )
+	{
+		free( file );
+	}
+	uint32_t first = root.low_order + ( root.high_order << 16 );
+	file->chain = get_chain_fat12( pvolume->fat, pvolume->fat_size, first );
+	if ( file->chain == NULL )
+	{
+		free( file );
+		return NULL;
+	}
 	return file;
 }
+
+
+
 int file_close(struct file_t* stream)
 {
 	if ( stream )
@@ -160,10 +182,12 @@ int file_close(struct file_t* stream)
 }
 size_t file_read(void *ptr, size_t size, size_t nmemb, struct file_t *stream)
 {
-	if ( ptr || size || nmemb || stream )
-	{}
-
-	return 0;
+	if ( ptr == NULL || nmemb == 0 || size == 0 || stream == NULL )
+	{
+		return 0;
+	}
+	size_t read = 0;
+	return read;
 }
 int32_t file_seek(struct file_t* stream, int32_t offset, int whence)
 {
@@ -173,7 +197,7 @@ int32_t file_seek(struct file_t* stream, int32_t offset, int whence)
 	return 0;
 }
 
-void extract_name( char* src, char* dest, int is_dir )
+void extract_name( const char* src, char* dest, int is_dir )
 {
 	int len = 11;
 	for ( int i = 0; i < 10; i++ )
@@ -206,6 +230,74 @@ void extract_name( char* src, char* dest, int is_dir )
 		*( dest + len ) = '\0';
 }
 
+struct clusters_chain_t* get_chain_fat12(const void * buffer, size_t size, uint32_t first_cluster)
+{
+	if ( buffer == NULL || size == 0 )
+	{
+		return NULL;
+	}
+	struct clusters_chain_t* chain = malloc( sizeof( *chain ) );
+	if ( chain == NULL )
+	{
+		return NULL;
+	}
+	chain->clusters = malloc(sizeof(uint32_t));
+	if (chain->clusters == NULL)
+	{
+		free(chain);
+		return NULL;
+	}
+	*chain->clusters = first_cluster;
+	chain->size = 1;
+	const uint8_t* fat = buffer;
+	size_t pos = (size_t)( first_cluster + (size_t)( first_cluster >> 1 ) );
+	uint32_t offset = first_cluster;
+	while ( 1 )
+	{
+		if ( pos >= size )
+		{
+			break;
+		}
+		uint16_t one, two, val;
+		one = *(fat + (int)( offset + (offset >> 1) ) );
+		two = *(fat + (int)( offset + (offset >> 1) ) + 1);
+
+		if (offset % 2 == 0)
+		{
+			val = two & 0xf;
+			val = (val << 8) + one;
+		}
+		else
+		{
+			val = two << 4;
+			val += (one >> 4);
+		}
+		if ( val == 0xfff || val == 0xff8 )
+		{
+			break;
+		}
+		if ( val == 0x0 )
+		{
+			fat++;
+			pos += 2;
+			continue;
+		}
+
+		uint32_t* temp = realloc( chain->clusters, sizeof( uint32_t ) * ( chain->size + 1 ) );
+		if ( temp == NULL )
+		{
+			free( chain->clusters );
+			free( chain );
+			return NULL;
+		}
+		chain->clusters = temp;
+		*( chain->clusters + chain->size ) = val;
+		chain->size++;
+		offset = val;
+		pos = val + ( val >> 1 );
+	}
+	return chain;
+}
 
 struct dir_t* dir_open(struct volume_t* pvolume, const char* dir_path)
 {
