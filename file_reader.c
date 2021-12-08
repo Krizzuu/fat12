@@ -186,8 +186,19 @@ size_t file_read(void *ptr, size_t size, size_t nmemb, struct file_t *stream)
 	{
 		return 0;
 	}
-	size_t read = 0;
-	return read;
+	size_t read, to_read;
+	read = 0;
+	to_read = size * nmemb;
+	{
+		size_t temp = to_read / 512;
+		if ( to_read - temp * 512 )
+		{
+			to_read++;
+		}
+	}
+
+
+	return read / size;
 }
 int32_t file_seek(struct file_t* stream, int32_t offset, int whence)
 {
