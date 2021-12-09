@@ -1,4 +1,5 @@
 #include "file_reader.h"
+
 struct disk_t* disk_open_from_file(const char* volume_file_name)
 {
 	if ( volume_file_name == NULL )
@@ -164,6 +165,7 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 	}
 	file->vol = pvolume;
 	file->pos = 0;
+	file->size = root.file_size;
 	return file;
 }
 
@@ -189,6 +191,10 @@ size_t file_read(void *ptr, size_t size, size_t nmemb, struct file_t *stream)
 	size_t read, to_read;
 	read = 0; // in bytes
 	to_read = size * nmemb;
+	if ( to_read > stream->size )
+	{
+		to_read = stream->size;
+	}
 	char* out = ptr;
 	int times = stream->vol->super->sectors_per_cluster;
 	int i = 1;

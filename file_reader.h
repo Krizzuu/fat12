@@ -59,6 +59,7 @@ struct file_t{
 	struct clusters_chain_t* chain;
 	struct volume_t* vol;
 	int32_t pos;
+	uint32_t size;
 };
 
 struct __attribute__((__packed__)) root_dir_t  {
