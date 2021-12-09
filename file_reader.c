@@ -1,5 +1,4 @@
 #include "file_reader.h"
-
 struct disk_t* disk_open_from_file(const char* volume_file_name)
 {
 	if ( volume_file_name == NULL )
@@ -30,7 +29,7 @@ int disk_read(struct disk_t* pdisk, int32_t first_sector, void* buffer, int32_t 
 		return -1;
 	}
 	int read = 0;
-	fseek( pdisk->fptr, 0 + ( first_sector << 9 ), SEEK_SET );
+	fseek( pdisk->fptr, first_sector << 9, SEEK_SET );
 	char* temp = buffer;
 	for( ; read < sectors_to_read; read++ )
 	{
@@ -102,6 +101,7 @@ struct volume_t* fat_open(struct disk_t* pdisk, uint32_t first_sector)
 	vol->first_root_sector = vol->first_fat_sector + vol->super->fat_count * vol->super->sectors_per_fat;
 	vol->first_data_sector = vol->first_root_sector + vol->super->root_dir_capacity;
 	vol->fat_size = vol->super->sectors_per_fat * vol->super->bytes_pes_sector;
+	vol->first_data_sector = vol->first_root_sector + ( vol->super->root_dir_capacity * sizeof( struct root_dir_t ) / 512 );
 
 	disk_read( pdisk, vol->first_fat_sector, vol->fat, vol->super->sectors_per_fat );
 
@@ -168,6 +168,7 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 		free( file );
 		return NULL;
 	}
+	file->vol = pvolume;
 	return file;
 }
 
@@ -176,8 +177,10 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 int file_close(struct file_t* stream)
 {
 	if ( stream )
-	{}
-
+	{
+		return -1;
+	}
+	free( stream->chain->clusters );
 	return 0;
 }
 size_t file_read(void *ptr, size_t size, size_t nmemb, struct file_t *stream)
@@ -187,16 +190,45 @@ size_t file_read(void *ptr, size_t size, size_t nmemb, struct file_t *stream)
 		return 0;
 	}
 	size_t read, to_read;
-	read = 0;
+	read = 0; // in bytes
 	to_read = size * nmemb;
+	char* out = ptr;
+	int times = stream->vol->super->sectors_per_cluster;
+	int i = 1;
+	uint32_t read_sector = stream->vol->first_data_sector + ( (int)*stream->chain->clusters - 2) * stream->vol->super->sectors_per_cluster;
+	while ( 1 )
 	{
-		size_t temp = to_read / 512;
-		if ( to_read - temp * 512 )
+		if ( times == 0 )
 		{
-			to_read++;
+			read_sector = stream->vol->first_data_sector + ( *( stream->chain->clusters + i++ ) - 2 ) * stream->vol->super->sectors_per_cluster;
+			times = 2;
+		}
+		if ( to_read == 0 )
+		{
+			break;
+		}
+		char sector[512] = { 0 };
+		int res = disk_read( stream->vol->disk, (int)read_sector, sector, 1 );
+		if ( res == -1 )
+		{
+			break;
+		}
+		times--;
+		if ( to_read < 512 )
+		{
+			read += to_read;
+			memcpy( out, sector, to_read );
+			to_read = 0;
+		}
+		else
+		{
+			read += 512;
+			memcpy( out, sector, 512 );
+			out += 512;
+			to_read -= 512;
+			read_sector++;
 		}
 	}
-
 
 	return read / size;
 }
