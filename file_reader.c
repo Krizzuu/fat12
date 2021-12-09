@@ -1,9 +1,10 @@
 #include "file_reader.h"
+
 struct disk_t* disk_open_from_file(const char* volume_file_name)
 {
 	if ( volume_file_name == NULL )
 	{
-		perror("EFAULT");
+//		perror("EFAULT");
 		return NULL;
 	}
 	struct disk_t* disk = malloc( sizeof( *disk ) );
@@ -15,7 +16,7 @@ struct disk_t* disk_open_from_file(const char* volume_file_name)
 	disk->fptr = fopen( volume_file_name, "rb" );
 	if ( disk->fptr == NULL )
 	{
-		perror("ENOENT");
+//		perror("ENOENT");
 		free( disk );
 		return NULL;
 	}
@@ -155,12 +156,6 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 	{
 		return NULL;
 	}
-
-	file->chain = malloc( sizeof( uint32_t ) );
-	if ( file->chain == NULL )
-	{
-		free( file );
-	}
 	uint32_t first = root.low_order + ( root.high_order << 16 );
 	file->chain = get_chain_fat12( pvolume->fat, pvolume->fat_size, first );
 	if ( file->chain == NULL )
@@ -169,6 +164,7 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 		return NULL;
 	}
 	file->vol = pvolume;
+	file->pos = 0;
 	return file;
 }
 
@@ -176,11 +172,13 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 
 int file_close(struct file_t* stream)
 {
-	if ( stream )
+	if ( stream == NULL )
 	{
 		return -1;
 	}
 	free( stream->chain->clusters );
+	free( stream->chain );
+	free( stream );
 	return 0;
 }
 size_t file_read(void *ptr, size_t size, size_t nmemb, struct file_t *stream)
@@ -284,10 +282,10 @@ struct clusters_chain_t* get_chain_fat12(const void * buffer, size_t size, uint3
 	{
 		return NULL;
 	}
-	chain->clusters = malloc(sizeof(uint32_t));
-	if (chain->clusters == NULL)
+	chain->clusters = malloc( sizeof( uint32_t ) );
+	if ( chain->clusters == NULL )
 	{
-		free(chain);
+		free( chain );
 		return NULL;
 	}
 	*chain->clusters = first_cluster;
