@@ -184,7 +184,7 @@ int file_close(struct file_t* stream)
 }
 size_t file_read(void *ptr, size_t size, size_t nmemb, struct file_t *stream)
 {
-	if ( ptr == NULL || nmemb == 0 || size == 0 || stream == NULL )
+	if ( ptr == NULL || nmemb == 0 || size == 0 || stream == NULL || stream->pos == stream->size )
 	{
 		return 0;
 	}
@@ -199,12 +199,30 @@ size_t file_read(void *ptr, size_t size, size_t nmemb, struct file_t *stream)
 	int times = stream->vol->super->sectors_per_cluster;
 	int i = 1;
 	uint32_t read_sector = stream->vol->first_data_sector + ( (int)*stream->chain->clusters - 2) * stream->vol->super->sectors_per_cluster;
+	uint32_t to_skip = stream->pos;
+	while ( to_skip >= 512 )
+	{
+		if ( times == 0 )
+		{
+			read_sector = stream->vol->first_data_sector + ( *( stream->chain->clusters + i++ ) - 2 ) * stream->vol->super->sectors_per_cluster;
+			times = stream->vol->super->sectors_per_cluster;
+		}
+		char sector[512] = { 0 };
+		int res = disk_read( stream->vol->disk, (int)read_sector, sector, 1 );
+		if ( res == -1 )
+		{
+			break;
+		}
+		to_skip -= 512;
+		times--;
+		read_sector++;
+	}
 	while ( 1 )
 	{
 		if ( times == 0 )
 		{
 			read_sector = stream->vol->first_data_sector + ( *( stream->chain->clusters + i++ ) - 2 ) * stream->vol->super->sectors_per_cluster;
-			times = 2;
+			times = stream->vol->super->sectors_per_cluster;
 		}
 		if ( to_read == 0 )
 		{
@@ -220,16 +238,20 @@ size_t file_read(void *ptr, size_t size, size_t nmemb, struct file_t *stream)
 		if ( to_read < 512 )
 		{
 			read += to_read;
-			memcpy( out, sector, to_read );
+			memcpy( out, sector + to_skip, to_read );
+			stream->pos += to_read;
 			to_read = 0;
+			to_skip = 0;
 		}
 		else
 		{
 			read += 512;
-			memcpy( out, sector, 512 );
+			memcpy( out, sector + to_skip, 512 - to_skip );
 			out += 512;
+			stream->pos += to_read;
 			to_read -= 512;
 			read_sector++;
+			to_skip = 0;
 		}
 	}
 
