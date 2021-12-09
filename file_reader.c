@@ -1,7 +1,4 @@
 #include "file_reader.h"
-#include "tested_declarations.h"
-#include "rdebug.h"
-
 struct disk_t* disk_open_from_file(const char* volume_file_name)
 {
 	if ( volume_file_name == NULL )
