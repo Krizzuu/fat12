@@ -1,4 +1,6 @@
 #include "file_reader.h"
+#include "tested_declarations.h"
+#include "rdebug.h"
 
 struct disk_t* disk_open_from_file(const char* volume_file_name)
 {
@@ -241,7 +243,7 @@ int32_t file_seek(struct file_t* stream, int32_t offset, int whence)
 void extract_name( const char* src, char* dest, int is_dir )
 {
 	int len = 11;
-	for ( int i = 0; i < 10; i++ )
+	for ( int i = 0; i < 11; i++ )
 	{
 		if( *( src + i ) == ' ' )
 		{
@@ -260,12 +262,22 @@ void extract_name( const char* src, char* dest, int is_dir )
 	}
 	if ( !is_dir )
 	{
-		for (int i = 0; i < 3; i++)
+		int dot_pos = len - 3;
+		if ( dot_pos >= 3 )
 		{
-			*( dest + len - i ) = *( dest + len - i - 1 );
+			for (int i = 0; i < 3; i++)
+			{
+				*(dest + len - i) = *(dest + len - i - 1);
+			}
+
+			*(dest + len - 3) = '.';
+			*( dest + len + 1 ) = '\0';
 		}
-		*( dest + len - 3 ) = '.';
-		*( dest + len + 1 ) = '\0';
+		else
+		{
+			*( dest + len ) = '\0';
+		}
+
 	}
 	else
 		*( dest + len ) = '\0';
