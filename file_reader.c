@@ -1,4 +1,6 @@
 #include "file_reader.h"
+#include "tested_declarations.h"
+#include "rdebug.h"
 
 struct disk_t* disk_open_from_file(const char* volume_file_name)
 {
@@ -136,6 +138,10 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 		for (int j = 0; j < 16; j++)
 		{
 			memcpy(&root, sector + (j << 5), sizeof(root));
+			if( *root.filename == 0x0 )
+			{
+				break;
+			}
 			if (*root.filename == 0xe5 || root.attrib & 0x10)
 			{
 				continue;
@@ -328,47 +334,68 @@ int32_t file_seek(struct file_t* stream, int32_t offset, int whence)
 	return (int)stream->pos;
 }
 
+
 void extract_name( const char* src, char* dest, int is_dir )
 {
-	int len = 11;
-	for ( int i = 0; i < 11; i++ )
+	if( !is_dir )
 	{
-		if( *( src + i ) == ' ' )
+		char name[9] = { 0 };
+		char ext[4] = { 0 };
+//		strncpy((char*)name, src, 8);
+//		strncpy((char*)name, src + 8, 3);
+		for( int i = 0; i < 8; i++ )
 		{
-			len--;
+			name[i] = src[i];
 		}
-	}
-
-	*dest = *src;
-	int k = 1;
-	for ( int i = 0; k < len; i++ )
-	{
-		if ( *( src + i + 1) != ' ')
+		for( int i = 0; i < 3; i++ )
 		{
-			*( dest + k++ ) = *( src + i + 1 );
+			ext[i] = src[8+i];
 		}
-	}
-	if ( !is_dir )
-	{
-		int dot_pos = len - 3;
-		if ( dot_pos >= 3 )
+		for( int i = 0; i < 8; i++ )
 		{
-			for (int i = 0; i < 3; i++)
+			while ( *( name + i ) == ' ' )
 			{
-				*(dest + len - i) = *(dest + len - i - 1);
+				for ( int j = i; j < 8; j++ )
+				{
+					*( name + j ) = *( name + j + 1 );
+				}
 			}
-
-			*(dest + len - 3) = '.';
-			*( dest + len + 1 ) = '\0';
 		}
-		else
+		for( int i = 0; i < 3; i++ )
 		{
-			*( dest + len ) = '\0';
+			while ( *( ext + i ) == ' ' )
+			{
+				for ( int j = i; j < 3; j++ )
+				{
+					*( ext + j ) = *( ext + j + 1 );
+				}
+			}
+		}
+		memcpy( dest, name, 9 );
+		if( *ext )
+		{
+			uint offset = strlen(name);
+			*(dest + offset) = '.';
+			memcpy(dest + offset + 1, ext, 4);
 		}
 
 	}
 	else
-		*( dest + len ) = '\0';
+	{
+		char name[13] = { 0 };
+		strncpy( name, src, 11 );
+		for( int i = 0; i < 13; i++ )
+		{
+			while ( *( name + i ) == ' ' )
+			{
+				for ( int j = i; j < 13; j++ )
+				{
+					*( name + j ) = *( name + j + 1 );
+				}
+			}
+		}
+		memcpy( dest, name, 13 );
+	}
 }
 
 struct clusters_chain_t* get_chain_fat12(const void * buffer, size_t size, uint32_t first_cluster)
@@ -486,15 +513,11 @@ int dir_read(struct dir_t* pdir, struct dir_entry_t* entry)
 			{
 				continue;
 			}
-			char* name = calloc( 13, sizeof( *name ) );
-			if ( name == NULL )
-			{
-				return -1;
-			}
+			char name[13] = { 0 };
 			entry->is_directory = ( root.attrib & 0x10 ) != 0;
 			extract_name((char*)root.filename, name, entry->is_directory );
 
-			entry->name = name;
+			memcpy( entry->name, name, 13 );
 			entry->size = root.file_size;
 			entry->is_archived = ( root.attrib & 0x20 ) != 0;
 
@@ -514,7 +537,9 @@ int dir_read(struct dir_t* pdir, struct dir_entry_t* entry)
 			entry->creation_time.hour = time.time_bits.hour;
 			entry->creation_time.minute = time.time_bits.minutes;
 			entry->creation_time.second = time.time_bits.seconds;
+
 			pdir->pos = i * 16 + j + 1;
+
 			return 0;
 		}
 	}
@@ -545,6 +570,7 @@ int is_root( const char* dir_path )
 	}
 	return 0;
 }
+
 
 
 

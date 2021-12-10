@@ -82,7 +82,7 @@ struct dir_t{
 	uint32_t pos;
 };
 struct dir_entry_t{
-	char* name;
+	char name[13];
 	size_t size;
 	uint8_t is_archived;
 	uint8_t is_readonly;
