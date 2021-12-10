@@ -58,7 +58,7 @@ struct clusters_chain_t{
 struct file_t{
 	struct clusters_chain_t* chain;
 	struct volume_t* vol;
-	int32_t pos;
+	uint32_t pos;
 	uint32_t size;
 };
 

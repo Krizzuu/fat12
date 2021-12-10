@@ -184,7 +184,11 @@ int file_close(struct file_t* stream)
 }
 size_t file_read(void *ptr, size_t size, size_t nmemb, struct file_t *stream)
 {
-	if ( ptr == NULL || nmemb == 0 || size == 0 || stream == NULL || stream->pos == stream->size )
+	if ( ptr == NULL || nmemb == 0 || size == 0 || stream == NULL )
+	{
+		return -1;
+	}
+	if ( stream->pos >= stream->size )
 	{
 		return 0;
 	}
@@ -200,6 +204,7 @@ size_t file_read(void *ptr, size_t size, size_t nmemb, struct file_t *stream)
 	int i = 1;
 	uint32_t read_sector = stream->vol->first_data_sector + ( (int)*stream->chain->clusters - 2) * stream->vol->super->sectors_per_cluster;
 	uint32_t to_skip = stream->pos;
+	uint32_t left = stream->size - stream->pos;
 	while ( to_skip >= 512 )
 	{
 		if ( times == 0 )
@@ -232,26 +237,54 @@ size_t file_read(void *ptr, size_t size, size_t nmemb, struct file_t *stream)
 		int res = disk_read( stream->vol->disk, (int)read_sector, sector, 1 );
 		if ( res == -1 )
 		{
-			break;
+			return -1;
 		}
 		times--;
 		if ( to_read < 512 )
 		{
-			read += to_read;
-			memcpy( out, sector + to_skip, to_read );
-			stream->pos += to_read;
+			uint32_t reread = 0;
+			uint32_t count = to_read > left ? left : to_read ;
+			if ( 512 - to_skip < count )
+			{
+				reread = count;
+				count = 512 - to_skip;
+				reread -= count;
+			}
+			read += count;
+			memcpy( out, sector + to_skip, count );
+			out += count;
+			stream->pos += count;
 			to_read = 0;
 			to_skip = 0;
+			if( reread )
+			{
+				if( times == 0 )
+				{
+					read_sector = stream->vol->first_data_sector + ( *( stream->chain->clusters + i++ ) - 2 ) * stream->vol->super->sectors_per_cluster;
+				}
+				else
+				{
+					read_sector++;
+				}
+				res = disk_read( stream->vol->disk, (int)read_sector, sector, 1 );
+				if ( res == -1 )
+				{
+					return -1;
+				}
+				memcpy( out, sector, reread );
+				read += reread;
+				stream->pos += reread;
+			}
 		}
 		else
 		{
 			read += 512;
-			memcpy( out, sector + to_skip, 512 - to_skip );
+			memcpy( out, sector, 512 - to_skip );
 			out += 512;
 			stream->pos += to_read;
 			to_read -= 512;
 			read_sector++;
-			to_skip = 0;
+			left -= 512;
 		}
 	}
 
