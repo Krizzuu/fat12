@@ -78,11 +78,50 @@ struct __attribute__((__packed__)) root_dir_t  {
 };
 
 struct dir_t{
-	int a;
+	struct volume_t* vol;
+	uint32_t pos;
 };
 struct dir_entry_t{
-	int a;
-	const char* name;
+	char* name;
+	size_t size;
+	uint8_t is_archived;
+	uint8_t is_readonly;
+	uint8_t is_system;
+	uint8_t is_hidden;
+	uint8_t is_directory;
+	struct creation_date_t
+	{
+		uint8_t  day;
+		uint8_t	 month;
+		uint16_t year;
+	} creation_date;
+	struct creation_time_t
+	{
+		uint8_t hour;
+		uint8_t minute;
+		uint8_t second;
+	} creation_time;
+};
+
+union date_t
+{
+	uint16_t val;
+	struct date_bits_t
+	{
+		uint16_t day:5;
+		uint16_t month:4;
+		uint16_t year:7;
+	} date_bits;
+};
+union time_t
+{
+	uint16_t val;
+	struct time_bits_t
+	{
+		uint16_t seconds:5;
+		uint16_t minutes:6;
+		uint16_t hour:5;
+	} time_bits;
 };
 
 struct disk_t* disk_open_from_file(const char* volume_file_name);
@@ -103,5 +142,7 @@ struct clusters_chain_t* get_chain_fat12(const void * buffer, size_t size, uint3
 struct dir_t* dir_open(struct volume_t* pvolume, const char* dir_path);
 int dir_read(struct dir_t* pdir, struct dir_entry_t* pentry);
 int dir_close(struct dir_t* pdir);
+
+int is_root( const char* dir_path );
 
 #endif //FILE_READER_H

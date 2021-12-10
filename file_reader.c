@@ -128,22 +128,25 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 	}
 
 	char sector[512];
-	disk_read( pvolume->disk, pvolume->first_root_sector, sector, 1 );
 	struct root_dir_t root;
 	int found = 0;
-	for( int i = 0; i < 16; i++ )
+	for ( uint i = 0; i < ( pvolume->super->root_dir_capacity * sizeof( root ) ) >> 9 && found == 0; i++ )
 	{
-		memcpy( &root, sector + ( i << 5 ), sizeof( root ) );
-		if ( *root.filename == 0xe5 || root.attrib & 0x10 )
+		disk_read( pvolume->disk, pvolume->first_root_sector + (int)i, sector, 1 );
+		for (int j = 0; j < 16; j++)
 		{
-			continue;
-		}
-		char name[13];
-		extract_name( ( char* )root.filename, name, root.attrib & 0x10 );
-		if ( strcmp( name, file_name ) == 0 )
-		{
-			found = 1;
-			break;
+			memcpy(&root, sector + (j << 5), sizeof(root));
+			if (*root.filename == 0xe5 || root.attrib & 0x10)
+			{
+				continue;
+			}
+			char name[13];
+			extract_name((char*)root.filename, name, 0);
+			if (strcmp(name, file_name) == 0)
+			{
+				found = 1;
+				break;
+			}
 		}
 	}
 	if ( found == 0 )
@@ -169,8 +172,6 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 	return file;
 }
 
-
-
 int file_close(struct file_t* stream)
 {
 	if ( stream == NULL )
@@ -182,6 +183,7 @@ int file_close(struct file_t* stream)
 	free( stream );
 	return 0;
 }
+
 size_t file_read(void *ptr, size_t size, size_t nmemb, struct file_t *stream)
 {
 	if ( ptr == NULL || nmemb == 0 || size == 0 || stream == NULL )
@@ -440,23 +442,107 @@ struct clusters_chain_t* get_chain_fat12(const void * buffer, size_t size, uint3
 
 struct dir_t* dir_open(struct volume_t* pvolume, const char* dir_path)
 {
-	if ( pvolume || dir_path )
-	{}
+	if ( pvolume == NULL || dir_path == NULL )
+	{
+		return NULL;
+	}
+	if ( !is_root( dir_path ) )
+	{
+		return NULL;
+	}
 
-	return NULL;
+	struct dir_t* dir = malloc( sizeof( *dir ) );
+	if ( dir == NULL )
+	{
+		return NULL;
+	}
+	dir->vol = pvolume;
+	dir->pos = 0;
+	return dir;
 }
-int dir_read(struct dir_t* pdir, struct dir_entry_t* pentry)
+int dir_read(struct dir_t* pdir, struct dir_entry_t* entry)
 {
-	if ( pdir || pentry )
-	{}
+	if ( pdir == NULL || entry == NULL )
+	{
+		return -1;
+	}
+	struct root_dir_t root;
+	char sector[512];
+	for ( uint i = 0; i < ( pdir->vol->super->root_dir_capacity * sizeof( root ) ) >> 9; i++ )
+	{
+		disk_read( pdir->vol->disk, pdir->vol->first_root_sector + (int)i, sector, 1 );
+		for (int j = 0; j < 16; j++)
+		{
+			if ( i * 16 + j < pdir->pos )
+			{
+				continue;
+			}
+			memcpy(&root, sector + (j << 5), sizeof(root));
+			if( *root.filename == 0x0 )
+			{
+				return 1;
+			}
+			if (*root.filename == 0xe5 )
+			{
+				continue;
+			}
+			char* name = calloc( 13, sizeof( *name ) );
+			if ( name == NULL )
+			{
+				return -1;
+			}
+			entry->is_directory = ( root.attrib & 0x10 ) != 0;
+			extract_name((char*)root.filename, name, entry->is_directory );
 
-	return 0;
+			entry->name = name;
+			entry->size = root.file_size;
+			entry->is_archived = ( root.attrib & 0x20 ) != 0;
+
+			entry->is_system = ( root.attrib & 0x04 ) != 0;
+			entry->is_hidden = ( root.attrib & 0x02 ) != 0;
+			entry->is_readonly = ( root.attrib & 0x01 ) != 0;
+
+			union date_t date;
+			date.val = root.creation_date;
+			union time_t time;
+			time.val = root.creation_time;
+
+			entry->creation_date.year = 1980 + date.date_bits.year;
+			entry->creation_date.month = date.date_bits.month;
+			entry->creation_date.day = date.date_bits.day;
+
+			entry->creation_time.hour = time.time_bits.hour;
+			entry->creation_time.minute = time.time_bits.minutes;
+			entry->creation_time.second = time.time_bits.seconds;
+			pdir->pos = i * 16 + j + 1;
+			return 0;
+		}
+	}
+
+	return 1;
 }
 int dir_close(struct dir_t* pdir)
 {
-	if ( pdir )
-	{}
+	if ( pdir == NULL )
+	{
+		return -1;
+	}
+//	free( pdir );
+	free( pdir );
+	return 0;
+}
 
+
+int is_root( const char* dir_path )
+{
+	if( dir_path == NULL )
+	{
+		return 0;
+	}
+	if ( *dir_path == '\\' && *( dir_path + 1 ) == '\0' )
+	{
+		return 1;
+	}
 	return 0;
 }
 
