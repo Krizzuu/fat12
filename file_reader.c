@@ -535,6 +535,7 @@ int dir_read(struct dir_t* pdir, struct dir_entry_t* entry)
 			entry->creation_time.hour = time.time_bits.hour;
 			entry->creation_time.minute = time.time_bits.minutes;
 			entry->creation_time.second = time.time_bits.seconds;
+			entry->first_cluster = ( root.high_order << 16 ) + root.low_order;
 
 			pdir->pos = i * 16 + j + 1;
 

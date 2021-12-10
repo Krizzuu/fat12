@@ -101,6 +101,8 @@ struct dir_entry_t{
 		uint8_t minute;
 		uint8_t second;
 	} creation_time;
+
+	uint32_t first_cluster;
 };
 
 union date_t
