@@ -134,7 +134,7 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 	for( int i = 0; i < 16; i++ )
 	{
 		memcpy( &root, sector + ( i << 5 ), sizeof( root ) );
-		if ( *root.filename == 0xe5 )
+		if ( *root.filename == 0xe5 || root.attrib & 0x10 )
 		{
 			continue;
 		}
@@ -292,10 +292,38 @@ size_t file_read(void *ptr, size_t size, size_t nmemb, struct file_t *stream)
 }
 int32_t file_seek(struct file_t* stream, int32_t offset, int whence)
 {
-	if ( stream || offset || whence )
-	{}
+	if ( stream == NULL )
+	{
+		return -1;
+	}
+	switch (whence)
+	{
+	case SEEK_SET:
+		if( offset < 0 || (uint32_t)offset >= stream->size )
+		{
+			return -1;
+		}
+		stream->pos = offset;
+		break;
+	case SEEK_CUR:
+		if( (int)stream->pos + offset < 0 || stream->pos + (uint32_t)offset >= stream->size )
+		{
+			return -1;
+		}
+		stream->pos += offset;
+		break;
+	case SEEK_END:
+		if( (uint32_t)offset <= -stream->size || offset > 0 )
+		{
+			return -1;
+		}
+		stream->pos = stream->size + offset;
+		break;
+	default:
+		return -1;
+	}
 
-	return 0;
+	return (int)stream->pos;
 }
 
 void extract_name( const char* src, char* dest, int is_dir )
