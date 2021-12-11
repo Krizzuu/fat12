@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <errno.h>
 #include <memory.h>
+#include <ctype.h>
 
 #ifndef FILE_READER_H
 #define FILE_READER_H
@@ -80,6 +81,9 @@ struct __attribute__((__packed__)) root_dir_t  {
 struct dir_t{
 	struct volume_t* vol;
 	uint32_t pos;
+
+	int is_root;
+	struct clusters_chain_t* chain;
 };
 struct dir_entry_t{
 	char name[13];
@@ -145,6 +149,5 @@ struct dir_t* dir_open(struct volume_t* pvolume, const char* dir_path);
 int dir_read(struct dir_t* pdir, struct dir_entry_t* pentry);
 int dir_close(struct dir_t* pdir);
 
-int is_root( const char* dir_path );
-
+void path_toupper( char* path );
 #endif //FILE_READER_H

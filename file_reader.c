@@ -126,6 +126,8 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 	{
 		return NULL;
 	}
+	char* path = strdup( file_name );
+	path_toupper( path );
 
 	char sector[512];
 	struct root_dir_t root;
@@ -471,10 +473,6 @@ struct dir_t* dir_open(struct volume_t* pvolume, const char* dir_path)
 	{
 		return NULL;
 	}
-	if ( !is_root( dir_path ) )
-	{
-		return NULL;
-	}
 
 	struct dir_t* dir = malloc( sizeof( *dir ) );
 	if ( dir == NULL )
@@ -556,20 +554,18 @@ int dir_close(struct dir_t* pdir)
 	return 0;
 }
 
-
-int is_root( const char* dir_path )
+void path_toupper( char* path )
 {
-	if( dir_path == NULL )
+	if( path )
 	{
-		return 0;
+		while( *path )
+		{
+			int ch = toupper( *path );
+			*path = (char)ch;
+			path++;
+		}
 	}
-	if ( *dir_path == '\\' && *( dir_path + 1 ) == '\0' )
-	{
-		return 1;
-	}
-	return 0;
 }
-
 
 
 
