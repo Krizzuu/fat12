@@ -549,7 +549,7 @@ int dir_read(struct dir_t* pdir, struct dir_entry_t* entry)
 				disk_read( pdir->vol->disk, read_sector + j, sector, 1 );
 				for (int k = 0; k < 16; k++)
 				{
-					uint curr_pos = i * pdir->vol->super->sectors_per_cluster * 16 + k;
+					uint curr_pos = i * 16 * pdir->vol->super->sectors_per_cluster + j * 16 + k;
 					if ( curr_pos < pdir->pos )
 					{
 						continue;
@@ -589,7 +589,7 @@ int dir_read(struct dir_t* pdir, struct dir_entry_t* entry)
 					entry->creation_time.second = time.time_bits.seconds;
 					entry->first_cluster = (root.high_order << 16) + root.low_order;
 
-					pdir->pos = i * pdir->vol->super->sectors_per_cluster * 16 + k + 1;
+					pdir->pos = i * 16 * pdir->vol->super->sectors_per_cluster + j * 16 + k + 1;
 
 					return 0;
 				}
@@ -797,8 +797,7 @@ int find_entry( struct volume_t* pvolume, struct root_dir_t *out, const char* pa
 		if ( found == 0 )
 		{
 			destroy_names( names );
-			free( chain->clusters );
-			free( chain );
+			return 1;
 		}
 		uint32_t first = root.low_order + ( root.high_order << 16 );
 		chain = get_chain_fat12( pvolume->fat, pvolume->fat_size, first );
@@ -833,6 +832,10 @@ int find_entry( struct volume_t* pvolume, struct root_dir_t *out, const char* pa
 						break;
 					}
 				}
+				if ( found == 1 )
+				{
+					break;
+				}
 			}
 			if ( found == 1 )
 			{
@@ -847,5 +850,6 @@ int find_entry( struct volume_t* pvolume, struct root_dir_t *out, const char* pa
 	destroy_names( names );
 	return 0;
 }
+
 
 
