@@ -129,35 +129,11 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 
 //	char sector[512];
 	struct root_dir_t root;
-	find_entry( pvolume, &root, file_name );
-//	int found = 0;
-//	for ( uint i = 0; i < ( pvolume->super->root_dir_capacity * sizeof( root ) ) >> 9 && found == 0; i++ )
-//	{
-//		disk_read( pvolume->disk, pvolume->first_root_sector + (int)i, sector, 1 );
-//		for (int j = 0; j < 16; j++)
-//		{
-//			memcpy(&root, sector + (j << 5), sizeof(root));
-//			if( *root.filename == 0x0 )
-//			{
-//				break;
-//			}
-//			if (*root.filename == 0xe5 || root.attrib & 0x10)
-//			{
-//				continue;
-//			}
-//			char name[13];
-//			extract_name((char*)root.filename, name, 0);
-//			if (strcmp(name, file_name) == 0)
-//			{
-//				found = 1;
-//				break;
-//			}
-//		}
-//	}
-//	if ( found == 0 )
-//	{
-//		return NULL;
-//	}
+	int res = find_entry( pvolume, &root, file_name );
+	if ( res != 0 )
+	{
+		return NULL;
+	}
 
 	struct file_t* file = malloc( sizeof( *file ) );
 	if ( file == NULL )
@@ -555,6 +531,7 @@ int dir_close(struct dir_t* pdir)
 
 char** path_to_names( const char* path, int* err)
 {
+	// 8 MEMLACK  1 BAD DATA  0 SUCCESS
 	char** names = NULL;
 	int count = 1;
 	while( *path )
@@ -567,7 +544,7 @@ char** path_to_names( const char* path, int* err)
 				free( *(names + i) );
 			}
 			free( names );
-			*err = 4;
+			*err = 8;
 			return NULL;
 		}
 		names = tarr;
@@ -598,6 +575,24 @@ char** path_to_names( const char* path, int* err)
 			path++;
 			len++;
 		}
+		if( strcmp( name, "." ) == 0 )
+		{
+			free( name );
+			continue;
+		}
+		else if ( strcmp( name, ".." ) == 0  )
+		{
+			free( name );
+			if ( count == 1 )
+			{
+				free( names );
+				*err = 1;
+				return NULL;
+			}
+			free( *( names + count - 2) );
+			count--;
+			continue;
+		}
 		*( names + count++ - 1 ) = name;
 	}
 	return names;
@@ -613,10 +608,17 @@ void destroy_names( char** names )
 
 int find_entry( struct volume_t* pvolume, struct root_dir_t *out, const char* path)
 {
-	// 0 SUCCESS	1 WRONG INPUT
+	// 0 SUCCESS	1 WRONG INPUT	2 NO MEM
 	int err;
 	char** names = path_to_names( path, &err );
-
+	if ( err == 8 )
+	{
+		return 2;
+	}
+	else if ( err == 1 )
+	{
+		return 1;
+	}
 	// ROOT DIR
 	char sector[512];
 	struct root_dir_t root;
@@ -625,7 +627,12 @@ int find_entry( struct volume_t* pvolume, struct root_dir_t *out, const char* pa
 	// SKIP DOTS or find error
 	for( i = 0; *( names + i ); i++ )
 	{
-		if ( strcmp( *( names + i ), "." ) == 0 )
+		if( *( names + i ) == NULL )
+		{
+			destroy_names( names );
+			return 0;
+		}
+		else if ( strcmp( *( names + i ), "." ) == 0 )
 		{
 			continue;
 		}
@@ -651,6 +658,10 @@ int find_entry( struct volume_t* pvolume, struct root_dir_t *out, const char* pa
 			{
 				continue;
 			}
+			if( *( names + i + 1 ) != NULL && ( root.attrib & 0x10 ) != 0x10 )
+			{
+				continue;
+			}
 			char name[13];
 			extract_name((char*)root.filename, name, root.attrib & 0x10);
 			if ( strcmp( name, *(names + i) ) == 0 )
@@ -665,6 +676,73 @@ int find_entry( struct volume_t* pvolume, struct root_dir_t *out, const char* pa
 		destroy_names( names );
 		return 1;
 	}
+	if ( *( names + i + 1 ) == NULL )
+	{
+		*out = root;
+		destroy_names( names );
+		return 0;
+	}
+	if( ( root.attrib & 0x10 ) != 0x10 ) // check if can continue scanning / is even a dir
+	{
+		destroy_names( names );
+		return 1;
+	}
+	// CONTINUE SEARCHING
+	struct clusters_chain_t* chain = NULL;
+	found = 1;
+	while( *( names + i + 1 ) )
+	{
+		if ( chain ) free( chain->clusters );
+		free( chain );
+		if ( found == 0 )
+		{
+			destroy_names( names );
+			free( chain->clusters );
+			free( chain );
+		}
+		uint32_t first = root.low_order + ( root.high_order << 16 );
+		chain = get_chain_fat12( pvolume->fat, pvolume->fat_size, first );
+		uint32_t* temp = chain->clusters;
+		i++;
+		found = 0;
+		for( uint j = 0; j < chain->size; j++ )
+		{
+			for( uint k = 0; k < pvolume->super->sectors_per_cluster; k++ )
+			{
+				disk_read(pvolume->disk, pvolume->first_data_sector + ( (int)*temp - 2 ) * pvolume->super->sectors_per_cluster + (int)k, sector, 1);
+				for( uint m = 0; m < 16; m++ )
+				{
+					memcpy(&root, sector + (m << 5), sizeof(root));
+					if( *root.filename == 0x0 )
+					{
+						break;
+					}
+					if (*root.filename == 0xe5 )
+					{
+						continue;
+					}
+					if( *( names + i + 1 ) != NULL && ( root.attrib & 0x10 ) != 0x10 )
+					{
+						continue;
+					}
+					char name[13];
+					extract_name((char*)root.filename, name, root.attrib & 0x10);
+					if ( strcmp( name, *(names + i) ) == 0 )
+					{
+						found = 1;
+						break;
+					}
+				}
+			}
+			if ( found == 1 )
+			{
+				break;
+			}
+			temp++;
+		}
+	}
+	free( chain->clusters );
+	free( chain );
 	*out = root;
 	destroy_names( names );
 	return 0;
