@@ -149,5 +149,8 @@ struct dir_t* dir_open(struct volume_t* pvolume, const char* dir_path);
 int dir_read(struct dir_t* pdir, struct dir_entry_t* pentry);
 int dir_close(struct dir_t* pdir);
 
-void path_toupper( char* path );
+char** path_to_names( const char* path, int* err);
+void destroy_names( char** names );
+
+int find_entry( struct volume_t* pvolume, struct root_dir_t *root, const char* path );
 #endif //FILE_READER_H

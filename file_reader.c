@@ -126,39 +126,38 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 	{
 		return NULL;
 	}
-	char* path = strdup( file_name );
-	path_toupper( path );
 
-	char sector[512];
+//	char sector[512];
 	struct root_dir_t root;
-	int found = 0;
-	for ( uint i = 0; i < ( pvolume->super->root_dir_capacity * sizeof( root ) ) >> 9 && found == 0; i++ )
-	{
-		disk_read( pvolume->disk, pvolume->first_root_sector + (int)i, sector, 1 );
-		for (int j = 0; j < 16; j++)
-		{
-			memcpy(&root, sector + (j << 5), sizeof(root));
-			if( *root.filename == 0x0 )
-			{
-				break;
-			}
-			if (*root.filename == 0xe5 || root.attrib & 0x10)
-			{
-				continue;
-			}
-			char name[13];
-			extract_name((char*)root.filename, name, 0);
-			if (strcmp(name, file_name) == 0)
-			{
-				found = 1;
-				break;
-			}
-		}
-	}
-	if ( found == 0 )
-	{
-		return NULL;
-	}
+	find_entry( pvolume, &root, file_name );
+//	int found = 0;
+//	for ( uint i = 0; i < ( pvolume->super->root_dir_capacity * sizeof( root ) ) >> 9 && found == 0; i++ )
+//	{
+//		disk_read( pvolume->disk, pvolume->first_root_sector + (int)i, sector, 1 );
+//		for (int j = 0; j < 16; j++)
+//		{
+//			memcpy(&root, sector + (j << 5), sizeof(root));
+//			if( *root.filename == 0x0 )
+//			{
+//				break;
+//			}
+//			if (*root.filename == 0xe5 || root.attrib & 0x10)
+//			{
+//				continue;
+//			}
+//			char name[13];
+//			extract_name((char*)root.filename, name, 0);
+//			if (strcmp(name, file_name) == 0)
+//			{
+//				found = 1;
+//				break;
+//			}
+//		}
+//	}
+//	if ( found == 0 )
+//	{
+//		return NULL;
+//	}
 
 	struct file_t* file = malloc( sizeof( *file ) );
 	if ( file == NULL )
@@ -554,18 +553,121 @@ int dir_close(struct dir_t* pdir)
 	return 0;
 }
 
-void path_toupper( char* path )
+char** path_to_names( const char* path, int* err)
 {
-	if( path )
+	char** names = NULL;
+	int count = 1;
+	while( *path )
 	{
-		while( *path )
+		char** tarr = realloc( names, sizeof( *names ) * ( count + 1 ) );
+		if( tarr == NULL )
 		{
-			int ch = toupper( *path );
-			*path = (char)ch;
-			path++;
+			for( int i = 0; *(names + i); i++ )
+			{
+				free( *(names + i) );
+			}
+			free( names );
+			*err = 4;
+			return NULL;
 		}
+		names = tarr;
+		*(names + count) = NULL;
+
+		if ( *path == '\\' )
+			path++;
+		char* name = NULL;
+		int len = 1;
+		while( *path && *path != '\\' )
+		{
+			char* temp = realloc( name, len + 1 );
+			if ( temp == NULL )
+			{
+				*err = 8;
+				free( name );
+				for( int i = 0; *(names + i); i++ )
+				{
+					free( *(names + i) );
+				}
+				free( names );
+				return NULL;
+			}
+			name = temp;
+			*( name + len ) = '\0';
+			char ch = (char)toupper( *path );
+			*( name + len - 1 ) = ch;
+			path++;
+			len++;
+		}
+		*( names + count++ - 1 ) = name;
 	}
+	return names;
+}
+void destroy_names( char** names )
+{
+	for( int i = 0; *(names + i); i++ )
+	{
+		free( *(names + i) );
+	}
+	free( names );
 }
 
+int find_entry( struct volume_t* pvolume, struct root_dir_t *out, const char* path)
+{
+	// 0 SUCCESS	1 WRONG INPUT
+	int err;
+	char** names = path_to_names( path, &err );
+
+	// ROOT DIR
+	char sector[512];
+	struct root_dir_t root;
+	int found = 0;
+	uint i;
+	// SKIP DOTS or find error
+	for( i = 0; *( names + i ); i++ )
+	{
+		if ( strcmp( *( names + i ), "." ) == 0 )
+		{
+			continue;
+		}
+		else if ( strcmp( *( names + i ), ".." ) == 0 )
+		{
+			destroy_names( names );
+			return 1;
+		}
+		break;
+	}
+	// SEARCH FOR ENTRY IN ROOT
+	for ( uint j = 0; j < ( pvolume->super->root_dir_capacity * sizeof( root ) ) >> 9 && found == 0; j++ )
+	{
+		disk_read( pvolume->disk, pvolume->first_root_sector + (int)j, sector, 1 );
+		for (int k = 0; k < 16; k++)
+		{
+			memcpy(&root, sector + (k << 5), sizeof(root));
+			if( *root.filename == 0x0 )
+			{
+				break;
+			}
+			if (*root.filename == 0xe5 )
+			{
+				continue;
+			}
+			char name[13];
+			extract_name((char*)root.filename, name, root.attrib & 0x10);
+			if ( strcmp( name, *(names + i) ) == 0 )
+			{
+				found = 1;
+				break;
+			}
+		}
+	}
+	if ( found == 0 )
+	{
+		destroy_names( names );
+		return 1;
+	}
+	*out = root;
+	destroy_names( names );
+	return 0;
+}
 
 
