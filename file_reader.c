@@ -130,7 +130,7 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 //	char sector[512];
 	struct root_dir_t root;
 	int res = find_entry( pvolume, &root, file_name );
-	if ( res != 0 )
+	if ( res != 0 || ( root.attrib & 0x10 ) )
 	{
 		return NULL;
 	}
