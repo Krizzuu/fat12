@@ -141,10 +141,10 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name)
 		return NULL;
 	}
 	uint32_t first = root.low_order + ( root.high_order << 16 );
-	file->chain = get_chain_fat12( pvolume->fat, pvolume->fat_size, first );
-	if ( file->chain == NULL )
+	file->chain = get_chain_fat12(pvolume->fat, pvolume->fat_size, first);
+	if (file->chain == NULL)
 	{
-		free( file );
+		free(file);
 		return NULL;
 	}
 	file->vol = pvolume;
@@ -448,7 +448,17 @@ struct dir_t* dir_open(struct volume_t* pvolume, const char* dir_path)
 	{
 		return NULL;
 	}
-
+	struct root_dir_t root;
+	int res = find_entry( pvolume, &root, dir_path );
+	int is_root = 0;
+	if ( res == 3 )
+	{
+		is_root = 1;
+	}
+	else if ( res != 0 || ( root.attrib & 0x10 ) != 0x10 )
+	{
+		return NULL;
+	}
 	struct dir_t* dir = malloc( sizeof( *dir ) );
 	if ( dir == NULL )
 	{
@@ -456,6 +466,16 @@ struct dir_t* dir_open(struct volume_t* pvolume, const char* dir_path)
 	}
 	dir->vol = pvolume;
 	dir->pos = 0;
+	dir->is_root = is_root;
+	if ( !dir->is_root )
+	{
+		uint32_t first = root.low_order + (root.high_order << 16);
+		dir->chain = get_chain_fat12(pvolume->fat, pvolume->fat_size, first);
+	}
+	else
+	{
+		dir->chain = NULL;
+	}
 	return dir;
 }
 int dir_read(struct dir_t* pdir, struct dir_entry_t* entry)
@@ -466,53 +486,114 @@ int dir_read(struct dir_t* pdir, struct dir_entry_t* entry)
 	}
 	struct root_dir_t root;
 	char sector[512];
-	for ( uint i = 0; i < ( pdir->vol->super->root_dir_capacity * sizeof( root ) ) >> 9; i++ )
+	if ( pdir->is_root )
 	{
-		disk_read( pdir->vol->disk, pdir->vol->first_root_sector + (int)i, sector, 1 );
-		for (int j = 0; j < 16; j++)
+		for (uint i = 0; i < (pdir->vol->super->root_dir_capacity * sizeof(root)) >> 9; i++)
 		{
-			if ( i * 16 + j < pdir->pos )
+			disk_read(pdir->vol->disk, pdir->vol->first_root_sector + (int)i, sector, 1);
+			for (int j = 0; j < 16; j++)
 			{
-				continue;
+				if (i * 16 + j < pdir->pos)
+				{
+					continue;
+				}
+				memcpy(&root, sector + (j << 5), sizeof(root));
+				if (*root.filename == 0x0)
+				{
+					return 1;
+				}
+				if (*root.filename == 0xe5)
+				{
+					continue;
+				}
+				char name[13] = { 0 };
+				entry->is_directory = (root.attrib & 0x10) != 0;
+				extract_name((char*)root.filename, name, entry->is_directory);
+
+				memcpy(entry->name, name, 13);
+				entry->size = root.file_size;
+				entry->is_archived = (root.attrib & 0x20) != 0;
+
+				entry->is_system = (root.attrib & 0x04) != 0;
+				entry->is_hidden = (root.attrib & 0x02) != 0;
+				entry->is_readonly = (root.attrib & 0x01) != 0;
+
+				union date_t date;
+				date.val = root.creation_date;
+				union time_t time;
+				time.val = root.creation_time;
+
+				entry->creation_date.year = 1980 + date.date_bits.year;
+				entry->creation_date.month = date.date_bits.month;
+				entry->creation_date.day = date.date_bits.day;
+
+				entry->creation_time.hour = time.time_bits.hour;
+				entry->creation_time.minute = time.time_bits.minutes;
+				entry->creation_time.second = time.time_bits.seconds;
+				entry->first_cluster = (root.high_order << 16) + root.low_order;
+
+				pdir->pos = i * 16 + j + 1;
+
+				return 0;
 			}
-			memcpy(&root, sector + (j << 5), sizeof(root));
-			if( *root.filename == 0x0 )
+		}
+	}
+	else
+	{
+		uint32_t* temp = pdir->chain->clusters;
+		for ( uint i = 0; i < pdir->chain->size; i++, temp++ )
+		{
+			for ( int j = 0; j < pdir->vol->super->sectors_per_cluster; j++ )
 			{
-				return 1;
+				int read_sector = pdir->vol->first_data_sector + ( (int)*temp - 2 ) * pdir->vol->super->sectors_per_cluster;
+				disk_read( pdir->vol->disk, read_sector + j, sector, 1 );
+				for (int k = 0; k < 16; k++)
+				{
+					uint curr_pos = i * pdir->vol->super->sectors_per_cluster * 16 + k;
+					if ( curr_pos < pdir->pos )
+					{
+						continue;
+					}
+					memcpy(&root, sector + (k << 5), sizeof(root));
+					if (*root.filename == 0x0)
+					{
+						return 1;
+					}
+					if (*root.filename == 0xe5)
+					{
+						continue;
+					}
+					char name[13] = { 0 };
+					entry->is_directory = (root.attrib & 0x10) != 0;
+					extract_name((char*)root.filename, name, entry->is_directory);
+
+					memcpy(entry->name, name, 13);
+					entry->size = root.file_size;
+					entry->is_archived = (root.attrib & 0x20) != 0;
+
+					entry->is_system = (root.attrib & 0x04) != 0;
+					entry->is_hidden = (root.attrib & 0x02) != 0;
+					entry->is_readonly = (root.attrib & 0x01) != 0;
+
+					union date_t date;
+					date.val = root.creation_date;
+					union time_t time;
+					time.val = root.creation_time;
+
+					entry->creation_date.year = 1980 + date.date_bits.year;
+					entry->creation_date.month = date.date_bits.month;
+					entry->creation_date.day = date.date_bits.day;
+
+					entry->creation_time.hour = time.time_bits.hour;
+					entry->creation_time.minute = time.time_bits.minutes;
+					entry->creation_time.second = time.time_bits.seconds;
+					entry->first_cluster = (root.high_order << 16) + root.low_order;
+
+					pdir->pos = i * pdir->vol->super->sectors_per_cluster * 16 + k + 1;
+
+					return 0;
+				}
 			}
-			if (*root.filename == 0xe5 )
-			{
-				continue;
-			}
-			char name[13] = { 0 };
-			entry->is_directory = ( root.attrib & 0x10 ) != 0;
-			extract_name((char*)root.filename, name, entry->is_directory );
-
-			memcpy( entry->name, name, 13 );
-			entry->size = root.file_size;
-			entry->is_archived = ( root.attrib & 0x20 ) != 0;
-
-			entry->is_system = ( root.attrib & 0x04 ) != 0;
-			entry->is_hidden = ( root.attrib & 0x02 ) != 0;
-			entry->is_readonly = ( root.attrib & 0x01 ) != 0;
-
-			union date_t date;
-			date.val = root.creation_date;
-			union time_t time;
-			time.val = root.creation_time;
-
-			entry->creation_date.year = 1980 + date.date_bits.year;
-			entry->creation_date.month = date.date_bits.month;
-			entry->creation_date.day = date.date_bits.day;
-
-			entry->creation_time.hour = time.time_bits.hour;
-			entry->creation_time.minute = time.time_bits.minutes;
-			entry->creation_time.second = time.time_bits.seconds;
-			entry->first_cluster = ( root.high_order << 16 ) + root.low_order;
-
-			pdir->pos = i * 16 + j + 1;
-
-			return 0;
 		}
 	}
 
@@ -525,6 +606,11 @@ int dir_close(struct dir_t* pdir)
 		return -1;
 	}
 //	free( pdir );
+	if ( pdir->chain )
+	{
+		free(pdir->chain->clusters);
+		free( pdir->chain );
+	}
 	free( pdir );
 	return 0;
 }
@@ -534,6 +620,15 @@ char** path_to_names( const char* path, int* err)
 	// 8 MEMLACK  1 BAD DATA  0 SUCCESS
 	char** names = NULL;
 	int count = 1;
+	if ( strcmp( path, "\\") == 0 || strcmp( path, "") == 0 )
+	{
+		names = calloc( 1, sizeof( *names ) );
+		if ( names == NULL )
+		{
+			*err = 8;
+		}
+		return names;
+	}
 	while( *path )
 	{
 		char** tarr = realloc( names, sizeof( *names ) * ( count + 1 ) );
@@ -618,6 +713,11 @@ int find_entry( struct volume_t* pvolume, struct root_dir_t *out, const char* pa
 	else if ( err == 1 )
 	{
 		return 1;
+	}
+	if ( *names == NULL )
+	{
+		destroy_names( names );
+		return 3;
 	}
 	// ROOT DIR
 	char sector[512];
